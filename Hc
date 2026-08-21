@@ -1,0 +1,58 @@
+-- Localized Services & References
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Localized Settings State
+local FlingTarget = nil
+local IsFlinging = false
+local FlingPower = 10000
+
+-- Create UI Window (Local Rayfield/UI instance)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UltimateFlingGUI"
+ScreenGui.ResetOnSpawn = false
+
+-- Local Core Fling Logic Function
+local function performFling(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    
+    local localCharacter = LocalPlayer.Character
+    local targetCharacter = targetPlayer.Character
+    
+    local localHRP = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+    local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+    
+    if localHRP and targetHRP then
+        local originalVelocity = localHRP.Velocity
+        
+        -- Temporary Angular Velocity trick for Fling
+        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+        bodyAngularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyAngularVelocity.AngularVelocity = Vector3.new(0, FlingPower, 0)
+        bodyAngularVelocity.Parent = localHRP
+        
+        -- Loop position update
+        local connection
+        connection = RunService.Heartbeat:Connect(function()
+            if IsFlinging and localHRP and targetHRP then
+                localHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 0)
+                localHRP.Velocity = Vector3.new(FlingPower, FlingPower, FlingPower)
+            else
+                bodyAngularVelocity:Destroy()
+                localHRP.Velocity = originalVelocity
+                connection:Disconnect()
+            end
+        end)
+    end
+end
+
+-- Function to Toggle Fling
+local function toggleFling(state, target)
+    IsFlinging = state
+    FlingTarget = target
+    if IsFlinging then
+        performFling(FlingTarget)
+    end
+end

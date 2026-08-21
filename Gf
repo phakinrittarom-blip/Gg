@@ -1,0 +1,190 @@
+-- โหลด Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services & Variables
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local SelectedTargets = {}
+local FlingActive = false
+getgenv().OldPos = nil
+getgenv().FPDH = workspace.FallenPartsDestroyHeight
+
+-- ระบบส่งการแจ้งเตือน
+local function Notify(title, content, duration)
+    Rayfield:Notify({
+        Title = title,
+        Content = content,
+        Duration = duration or 3,
+        Image = 4483362458
+    })
+end
+
+-- ฟังก์ชัน Fling (ตรรกะเดิมจาก zqyDSUWX)
+local function SkidFling(TargetPlayer)
+    local Character = LocalPlayer.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+    local TCharacter = TargetPlayer.Character
+    if not TCharacter then return end
+    
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle = Accessory and Accessory:FindFirstChild("Handle")
+
+    if Character and Humanoid and RootPart then
+        if RootPart.Velocity.Magnitude < 50 then
+            getgenv().OldPos = RootPart.CFrame
+        end
+        
+        if THumanoid and THumanoid.Sit then
+            return Notify("Error", TargetPlayer.Name .. " กำลังนั่งอยู่", 2)
+        end
+        
+        if THead then workspace.CurrentCamera.CameraSubject = THead
+        elseif Handle then workspace.CurrentCamera.CameraSubject = Handle
+        elseif THumanoid and TRootPart then workspace.CurrentCamera.CameraSubject = THumanoid end
+        
+        if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
+        
+        local FPos = function(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+        
+        local SFBasePart = function(BasePart)
+            local TimeToWait = 2
+            local Time = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+            until Time + TimeToWait < tick() or not FlingActive
+        end
+        
+        workspace.FallenPartsDestroyHeight = 0/0
+        
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        if TRootPart then SFBasePart(TRootPart)
+        elseif THead then SFBasePart(THead)
+        elseif Handle then SFBasePart(Handle)
+        end
+        
+        BV:Destroy()
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        workspace.CurrentCamera.CameraSubject = Humanoid
+        
+        if getgenv().OldPos then
+            repeat
+                RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+                Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+                Humanoid:ChangeState("GettingUp")
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                    end
+                end
+                task.wait()
+            until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+            workspace.FallenPartsDestroyHeight = getgenv().FPDH
+        end
+    end
+end
+
+-- สร้างหน้าต่าง Rayfield UI
+local Window = Rayfield:CreateWindow({
+   Name = "KILASIK'S MULTI-FLING",
+   LoadingTitle = "กำลังโหลด Fling Hub...",
+   LoadingSubtitle = "by K1LAS1K",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+local Tab = Window:CreateTab("Main Control", 4483362458)
+
+-- 1. สวิตช์ เปิด/ปิด Fling
+local FlingToggle = Tab:CreateToggle({
+   Name = "เริ่มทำงาน Fling (Start Fling)",
+   CurrentValue = false,
+   Flag = "FlingToggle",
+   Callback = function(Value)
+      FlingActive = Value
+      if FlingActive then
+         if #SelectedTargets == 0 then
+            Notify("เตือน", "กรุณาเลือกเป้าหมายอย่างน้อย 1 คน", 2)
+            return
+         end
+         
+         Notify("เริ่มทำงาน", "กำลัง Fling ผู้เล่นที่เลือก...", 2)
+         task.spawn(function()
+            while FlingActive do
+               for _, playerName in ipairs(SelectedTargets) do
+                  local targetPlayer = Players:FindFirstChild(playerName)
+                  if targetPlayer and FlingActive then
+                     SkidFling(targetPlayer)
+                     task.wait(0.1)
+                  end
+               end
+               task.wait(0.5)
+            end
+         end)
+      else
+         Notify("หยุดทำงาน", "ยกเลิกการ Fling แล้ว", 2)
+      end
+   end,
+})
+
+-- 2. Dropdown เลือกผู้เล่นหลายคน (Multi-Dropdown)
+local function GetPlayerList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(list, p.Name)
+        end
+    end
+    return list
+end
+
+local PlayerDropdown = Tab:CreateDropdown({
+   Name = "เลือกเป้าหมาย (Select Targets)",
+   Options = GetPlayerList(),
+   CurrentOption = {},
+   MultipleOptions = true,
+   Flag = "TargetsDropdown",
+   Callback = function(Options)
+      SelectedTargets = Options
+   end,
+})
+
+-- 3. ปุ่มกด Refresh รายชื่อผู้เล่น
+local RefreshBtn = Tab:CreateButton({
+   Name = "รีเฟรชรายชื่อผู้เล่น (Refresh Player List)",
+   Callback = function()
+      PlayerDropdown:Set(GetPlayerList())
+      Notify("สำเร็จ", "อัปเดตรายชื่อผู้เล่นเรียบร้อย", 2)
+   end,
+})
+
+Notify("โหลดสำเร็จ", "พร้อมใช้งาน KILASIK's Multi-Fling บน Rayfield!", 3)
